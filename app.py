@@ -1,45 +1,43 @@
-"""
-yt-dlp HTTP microservice.
-POST /download { "url": "<instagram post url>" }
-Returns raw MP4.
-"""
-
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 import subprocess
 import uuid
 import os
-from flask import Flask, request, send_file, jsonify
 
-app = Flask(__name__)
+app = FastAPI()
 
-DOWNLOAD_DIR = "/tmp/videos"
+DOWNLOAD_DIR = "/downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+class DownloadRequest(BaseModel):
+    url: str
 
-@app.route("/download", methods=["POST"])
-def download():
-    data = request.get_json()
-    if not data or "url" not in data:
-        return jsonify({"error": "Missing url"}), 400
-
-    post_url = data["url"]
-    filename = f"{uuid.uuid4()}.mp4"
-    filepath = os.path.join(DOWNLOAD_DIR, filename)
+@app.post("/download")
+def download_video(req: DownloadRequest):
+    video_id = str(uuid.uuid4())
+    output_template = f"{DOWNLOAD_DIR}/{video_id}.%(ext)s"
 
     cmd = [
         "yt-dlp",
-        "--no-playlist",
-        "-f", "mp4",
-        "-o", filepath,
-        post_url,
+        "-f", "best",
+        "-o", output_template,
+        req.url
     ]
 
-    try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError:
-        return jsonify({"error": "Download failed"}), 500
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True
+    )
 
-    return send_file(filepath, mimetype="video/mp4")
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=result.stderr
+        )
 
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3030)
+    return {
+        "status": "ok",
+        "video_id": video_id,
+        "log": result.stdout
+    }
