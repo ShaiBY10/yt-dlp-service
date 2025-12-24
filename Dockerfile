@@ -5,5 +5,5 @@ RUN pip install --no-cache-dir flask
 WORKDIR /app
 COPY app.py .
 
-EXPOSE 8080
+EXPOSE 3030
 CMD ["python", "app.py"]
